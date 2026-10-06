@@ -1,100 +1,196 @@
 """
-benchmark.py - Automated experiments and evaluation for Minesweeper AI.
-Author: Group Students (CO3061) - HCMUT
-Course: Introduction to Artificial Intelligence (CO3061) - HCMUT
+benchmark.py - Automated experiments for the Rule-based / Hybrid Minesweeper AI.
 """
 
-import time
 import sys
-from game_logic import MinesweeperGame
+import time
+
 from ai_solver import MinesweeperAI, Move
+from game_logic import MinesweeperGame
 
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
-def run_single_simulation(rows: int, cols: int, num_mines: int, flood_algo: str = "BFS"):
-    """Runs a single automated game from start to finish using the AI."""
-    game = MinesweeperGame(rows, cols, num_mines, flood_algorithm=flood_algo)
+def run_single_simulation(
+    rows: int,
+    cols: int,
+    num_mines: int,
+    ai_mode: str = MinesweeperAI.HYBRID,
+    search_algo: str = "BFS",
+    seed=None,
+):
+    """Run one automated game and return solver statistics."""
+    game = MinesweeperGame(
+        rows,
+        cols,
+        num_mines,
+        flood_algorithm=search_algo,
+        random_seed=seed,
+    )
     ai = MinesweeperAI(game)
 
     moves_count = 0
     guesses_count = 0
+    search_steps = 0
+    rule_steps = 0
     start_t = time.perf_counter()
+    stalled = False
 
     while not game.game_over:
-        move = ai.get_next_move()
+        move = ai.get_next_move(ai_mode, search_algo)
         if not move:
+            stalled = True
             break
-        
+
         moves_count += 1
-        if "Heuristic" in move.reason or move.probability > 0.0 and move.action == Move.REVEAL:
-            # If not turn 1 and had to risk
-            if moves_count > 1:
-                guesses_count += 1
+        if move.method == "RULE":
+            rule_steps += 1
+        if move.method in ("BFS", "DFS", "HEURISTIC"):
+            search_steps += 1
+        if move.action == Move.GUESS:
+            guesses_count += 1
 
         ai.execute_move(move)
 
     duration_ms = (time.perf_counter() - start_t) * 1000
     return {
         "won": game.won,
+        "stalled": stalled,
         "moves": moves_count,
+        "rule_steps": rule_steps,
+        "search_steps": search_steps,
         "guesses": guesses_count,
         "time_ms": duration_ms,
-        "revealed": game.revealed_count
+        "revealed": game.revealed_count,
     }
 
 
 def run_benchmark(num_games: int = 100):
-    """Runs benchmark across multiple configurations and prints summary tables."""
+    """Benchmark normal random boards with both AI strategies."""
     configs = [
-        {"name": "5x5 Mini (3 Mìn)", "rows": 5, "cols": 5, "mines": 3, "algo": "BFS"},
-        {"name": "5x5 Thử thách (5 Mìn)", "rows": 5, "cols": 5, "mines": 5, "algo": "BFS"},
-        {"name": "9x9 Chuẩn (10 Mìn) - BFS", "rows": 9, "cols": 9, "mines": 10, "algo": "BFS"},
-        {"name": "9x9 Chuẩn (10 Mìn) - DFS", "rows": 9, "cols": 9, "mines": 10, "algo": "DFS"},
+        {
+            "name": "9x9 Rule-only",
+            "rows": 9,
+            "cols": 9,
+            "mines": 10,
+            "mode": MinesweeperAI.RULES_ONLY,
+            "algo": "BFS",
+        },
+        {
+            "name": "9x9 Hybrid BFS",
+            "rows": 9,
+            "cols": 9,
+            "mines": 10,
+            "mode": MinesweeperAI.HYBRID,
+            "algo": "BFS",
+        },
+        {
+            "name": "9x9 Hybrid DFS",
+            "rows": 9,
+            "cols": 9,
+            "mines": 10,
+            "mode": MinesweeperAI.HYBRID,
+            "algo": "DFS",
+        },
+        {
+            "name": "16x16 Hybrid BFS",
+            "rows": 16,
+            "cols": 16,
+            "mines": 40,
+            "mode": MinesweeperAI.HYBRID,
+            "algo": "BFS",
+        },
     ]
 
+    print("=" * 78)
+    print(f"MINESWEEPER AI BENCHMARK - {num_games} ván/cấu hình")
+    print("=" * 78)
+
     results_summary = []
-
-    print(f"{'='*60}")
-    print(f"BẮT ĐẦU CHẠY THỰC NGHIỆM AI MINESWEEPER ({num_games} VÁN MỖI CẤU HÌNH)")
-    print(f"{'='*60}")
-
     for cfg in configs:
-        wins = 0
-        total_moves = 0
-        total_guesses = 0
-        total_time = 0
+        totals = {
+            "wins": 0,
+            "stalls": 0,
+            "moves": 0,
+            "search_steps": 0,
+            "guesses": 0,
+            "time_ms": 0.0,
+        }
 
         for _ in range(num_games):
-            res = run_single_simulation(cfg["rows"], cfg["cols"], cfg["mines"], cfg["algo"])
-            if res["won"]:
-                wins += 1
-            total_moves += res["moves"]
-            total_guesses += res["guesses"]
-            total_time += res["time_ms"]
-
-        win_rate = (wins / num_games) * 100
-        avg_moves = total_moves / num_games
-        avg_guesses = total_guesses / num_games
-        avg_time = total_time / num_games
+            result = run_single_simulation(
+                cfg["rows"],
+                cfg["cols"],
+                cfg["mines"],
+                cfg["mode"],
+                cfg["algo"],
+            )
+            totals["wins"] += int(result["won"])
+            totals["stalls"] += int(result["stalled"])
+            totals["moves"] += result["moves"]
+            totals["search_steps"] += result["search_steps"]
+            totals["guesses"] += result["guesses"]
+            totals["time_ms"] += result["time_ms"]
 
         summary = {
             "name": cfg["name"],
-            "win_rate": win_rate,
-            "avg_moves": avg_moves,
-            "avg_guesses": avg_guesses,
-            "avg_time_ms": avg_time,
-            "algo": cfg["algo"]
+            "win_rate": totals["wins"] / num_games * 100,
+            "stall_rate": totals["stalls"] / num_games * 100,
+            "avg_moves": totals["moves"] / num_games,
+            "avg_search_steps": totals["search_steps"] / num_games,
+            "avg_guesses": totals["guesses"] / num_games,
+            "avg_time_ms": totals["time_ms"] / num_games,
         }
         results_summary.append(summary)
 
-        print(f"[-] {cfg['name']}: Win Rate = {win_rate:.1f}%, Nước đi TB = {avg_moves:.1f}, "
-              f"Lần đoán TB = {avg_guesses:.2f}, Thời gian TB = {avg_time:.2f} ms")
+        print(
+            f"{cfg['name']:<22} | Win={summary['win_rate']:5.1f}% "
+            f"| Stall={summary['stall_rate']:5.1f}% "
+            f"| Moves={summary['avg_moves']:6.1f} "
+            f"| Search={summary['avg_search_steps']:5.1f} "
+            f"| Guess={summary['avg_guesses']:5.1f} "
+            f"| {summary['avg_time_ms']:8.2f} ms"
+        )
 
-    print(f"{'='*60}\n")
+    print("=" * 78)
     return results_summary
+
+
+def demonstrate_25x30_challenge(search_algo: str = "BFS"):
+    """Show that the fixed 25x30 board stalls with Rules but continues in Hybrid."""
+    print("\n25x30 SEARCH CHALLENGE (150 mines, seed=4)")
+    print("-" * 78)
+
+    rules = run_single_simulation(
+        25,
+        30,
+        150,
+        ai_mode=MinesweeperAI.RULES_ONLY,
+        search_algo=search_algo,
+        seed=4,
+    )
+    hybrid = run_single_simulation(
+        25,
+        30,
+        150,
+        ai_mode=MinesweeperAI.HYBRID,
+        search_algo=search_algo,
+        seed=4,
+    )
+
+    print(
+        f"Rule-only: won={rules['won']}, stalled={rules['stalled']}, "
+        f"moves={rules['moves']}, revealed={rules['revealed']}"
+    )
+    print(
+        f"Hybrid {search_algo}: won={hybrid['won']}, stalled={hybrid['stalled']}, "
+        f"moves={hybrid['moves']}, search_steps={hybrid['search_steps']}, "
+        f"guesses={hybrid['guesses']}"
+    )
+    return {"rules": rules, "hybrid": hybrid}
 
 
 if __name__ == "__main__":
     run_benchmark(100)
+    demonstrate_25x30_challenge("BFS")

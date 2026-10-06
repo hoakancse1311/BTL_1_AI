@@ -28,11 +28,13 @@ class Cell:
 
 class MinesweeperGame:
     """Manages the state and operations of the Minesweeper game."""
-    def __init__(self, rows: int = 9, cols: int = 9, num_mines: int = 10, flood_algorithm: str = "BFS"):
+    def __init__(self, rows: int = 9, cols: int = 9, num_mines: int = 10, flood_algorithm: str = "BFS", random_seed=None):
         self.rows = rows
         self.cols = cols
         self.num_mines = min(num_mines, rows * cols - 1)
         self.flood_algorithm = flood_algorithm.upper()  # 'BFS' or 'DFS'
+        self.random_seed = random_seed
+        self._rng = random.Random(random_seed) if random_seed is not None else random.Random()
         
         self.board = [[Cell(r, c) for c in range(self.cols)] for r in range(self.rows)]
         self.game_over = False
@@ -45,7 +47,7 @@ class MinesweeperGame:
         self.last_flood_revealed = []
         self.last_algorithm_used = self.flood_algorithm
 
-    def reset(self, rows: int = None, cols: int = None, num_mines: int = None, flood_algorithm: str = None):
+    def reset(self, rows: int = None, cols: int = None, num_mines: int = None, flood_algorithm: str = None, random_seed=None):
         """Resets the game with optional new dimensions or settings."""
         if rows is not None:
             self.rows = rows
@@ -55,6 +57,8 @@ class MinesweeperGame:
             self.num_mines = min(num_mines, self.rows * self.cols - 1)
         if flood_algorithm is not None:
             self.flood_algorithm = flood_algorithm.upper()
+        self.random_seed = random_seed
+        self._rng = random.Random(random_seed) if random_seed is not None else random.Random()
 
         self.board = [[Cell(r, c) for c in range(self.cols)] for r in range(self.rows)]
         self.game_over = False
@@ -95,7 +99,7 @@ class MinesweeperGame:
         if len(all_coords) < self.num_mines:
             all_coords = [(r, c) for r in range(self.rows) for c in range(self.cols) if (r, c) != (safe_r, safe_c)]
             
-        mine_coords = set(random.sample(all_coords, self.num_mines))
+        mine_coords = set(self._rng.sample(all_coords, self.num_mines))
         for r, c in mine_coords:
             self.board[r][c].is_mine = True
 
